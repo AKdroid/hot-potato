@@ -1,0 +1,238 @@
+<!DOCTYPE html PUBLIC "-//IETF//DTD HTML 2.0//EN">
+<!-- saved from url=(0068)https://courses.ncsu.edu/csc501/lec/001/wrap/assignments/potato.html -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
+<title>Hot Potato Program</title>
+<style type="text/css"></style></head>
+<body>
+<div align="center">
+<div align="left" style="font-family:Trebuchet MS;width: 700px;">
+<h1>CSC 501 Program: Hot Potato</h1>
+<hr>
+<h3>Assignment:</h3>
+Use sockets and TCP/IP communication to play a
+distributed game of "hot potato."
+
+<hr>
+<h3>Due:</h3>
+See home
+<a href="https://courses.ncsu.edu/csc501/lec/001/index.html">page</a>.
+
+<hr>
+
+<h3>Description:</h3>
+
+<i>Hot Potato</i> is a children's game in which a "potato"
+is rapidly tossed around until, at some arbitrary point, the game ends.
+The child holding the potato is "it."
+(One does not want to be it.)
+In this assignment you will create a ring of "player"
+processes that will pass the potato around; therefore,
+each player will have a left and a right neighbor.
+Furthermore, you will create a "ringmaster" process that
+will start each game, report the results, and shut down the network.
+<p>
+To begin, the ringmaster creates a potato with some number of hops and
+sends it to a randomly selected player.
+Each time a player receives the potato, it will decrement the number
+of hops and append its identity on the potato.
+If the remaining number of hops is greater than zero, it will randomly
+select a neighbor and send the potato to that neighbor.
+The game ends when the hops counter reaches zero.
+The player holding the potato sends it to the ringmaster indicating
+the end of this game.
+The ringmaster prints a trace of the game (from the identities that
+are appended to the potato) to the screen, and shuts down the network.
+The trace consists of the path the potato took
+(that is, the players in the order they held the potato).
+</p><p>
+Each player process will create three connections: left, right, and
+ringmaster.
+The potato can arrive on any of the three connections.
+Commands and important information may also be received from the
+ringmaster. 
+The ringmaster will create <i>n</i> connections, one for each player.
+At the end of a game the ringmaster will receive the potato from the
+player who is "it."
+</p><p>
+The assignment is to create one ringmaster and some number of
+player processes, then play a game and terminate all processes
+gracefully.
+You may explicitly create each process from an interactive shell;
+however, the player processes must exit themselves in response to commands
+from the ringmaster.
+</p><p>
+<strong>The programs will use Unix sockets for communication.</strong>
+</p><p>
+Establishing communication between all processes will be the
+most difficult part of the assignment.  
+Therefore, you should start small and work up to the full ring
+topology.
+</p><p>
+Your programs must use exactly the format described here.
+The ringmaster program is invoked as shown below (the words and the angled
+brackets are figurative, and should be replaced with an appropriate
+value):
+</p><pre>    master &lt;port-number&gt; &lt;number-of-players&gt; &lt;hops&gt;</pre>
+where <tt>number-of-players</tt> is greater than one and <tt>hops</tt>
+is non-negative.
+<p>
+The player programs are invoked thusly:
+</p><pre>    player &lt;master-machine-name&gt; &lt;port-number&gt;</pre>
+where <tt>master-machine-name</tt> is the name of the machine on which
+<tt>master</tt> was invoked and <tt>port-number</tt> is the same as
+was passed to <tt>master</tt>.
+Players are numbered beginning with 0.
+The players are connected in the ring such that the left neighbor of
+player <i>n</i> is player <i>n</i>-1 and the right neighbor is player <i>n</i>+1.
+(Player 0 is the right neighbor of last player (<tt>number_of_players</tt>-1).
+<p>
+Zero (0) is a valid number of hops.
+In this case, your program must create the ring of processes.
+<strong>After</strong> the ring is created, the ringmaster shuts down the
+game.
+
+</p><hr>
+<h3>Turn In:</h3>
+Be sure to turnin <b>all</b> the files needed.
+Include a <tt>Makefile</tt> that creates two executable files
+called <tt>master</tt> and <tt>player</tt>.
+An appropriate penalty will be assessed if this is not so.
+<p>
+Also, denote any resources used--including other students--in a file
+named <b>REFERENCES</b>.
+
+</p><hr>
+
+<h3>Resources:</h3>
+Two programs have been provided to get you started with sockets.
+The <tt>listen</tt> program creates a socket and accepts
+connections with other processes.
+The <tt>speak</tt> program establishes a connection with <tt>listen</tt>.
+Then it sends the characters typed to its terminal to the
+<tt>listen</tt> process, which prints them on its terminal.
+At EOF (<code>^D</code>) <tt>speak</tt> closes the connection and
+terminates.
+<tt>listen</tt> continues to accept connections from other
+processes.
+(To terminate <tt>listen</tt> use <code>^C</code>.
+Note: the port is not completely shutdown.)
+<p>
+Download the tar file
+</p><blockquote>
+<a href="https://courses.ncsu.edu/csc501/lec/001/wrap/assignments/socket.tar.gz">socket.tar.gz</a>
+</blockquote>
+into your working directory.  Unpack the archive using the following command
+<blockquote>
+<pre>gunzip -c potato.tar.gz | tar xf -</pre>
+</blockquote>
+<p>
+In separate windows (but on one machine) execute the two
+programs.
+Then try using the programs on different machines.
+You must pick an unused port number and give it to both programs.
+</p><p>
+RTFM--Read the fine manual.
+See select(3), accept(3), bind(3), connect(3),
+gethostbyname(3), getsockname(3),
+getsockopt(3), htonl(3), htons(3), inet_addr(3),
+listen(3), recv(3), recvfrom(3),
+recvmsg(3), send(3), sendmsg(3), setsockopt(3),
+shutdown(3), socketpair(3), in(5), and socket(5).
+
+</p><hr>
+<h3>Output:</h3>
+
+The programs you create must follow the description below
+precisely.
+If you deviate from what is expected, your grade will suffer because:
+<ul>
+  <li> The instructor may not be able to figure out how to invoke the program,
+  </li><li> The instructor may not see what he is looking for, or
+  </li><li> The instructor may be annoyed.
+</li></ul>
+<p>
+The following describes <strong>all</strong> the output of the
+<tt>master</tt> program.
+Do not have any other output.
+</p><dl><dt><strong>Initially</strong>
+</dt><dd>
+<pre>    Potato Master on &lt;host-name&gt;
+    Players = &lt;number&gt;
+    Hops = &lt;number&gt;</pre>
+<p>
+</p></dd><dt><strong>Upon connection with a player</strong>
+</dt><dd> 
+<pre>    player &lt;number&gt; is on &lt;host-name&gt;</pre>
+Number players beginning with 0.
+<p>
+</p></dd><dt><strong>When first launching a potato</strong>
+</dt><dd> 
+<pre>    All players present, sending potato to player &lt;number&gt;</pre>
+The player that initially is sent the potato is selected at random.
+<p>
+</p></dd><dt><strong>When it gets the potato back (at end of game)</strong>
+</dt><dd> 
+<pre>    Trace of potato:
+    &lt;n&gt;,&lt;n&gt;,...</pre>
+Trace is a comma separated list of player numbers.  No spaces or
+newlines in the list.
+<p>
+ </p></dd></dl>
+<p>
+The following describes <strong>all</strong> the output of the
+ <tt>player</tt> program.
+Do not have any other output.
+</p><dl><dt><strong>After establishing a port with master</strong>
+</dt><dd> 
+<pre>    Connected as player &lt;number&gt;</pre>
+<p>
+</p></dd><dt><strong>When forwarding potato</strong> (to another player)
+</dt><dd> 
+<pre>    Sending potato to &lt;number&gt;</pre>
+<p>
+</p></dd><dt><strong>When number of hops reached</strong>
+</dt><dd> 
+<pre>     I'm it</pre>
+</dd></dl>
+
+<hr>
+<h3>Testing:</h3>
+This assignment will be compiled and tested on one or more
+of the VCL machines.
+Several configurations will be tested.
+The code will be tested on the VCL image named
+<a href="https://courses.ncsu.edu/csc501/lec/001/wrap/assignments/submit.html">here.</a>
+
+<hr>
+<h3>Notes:</h3>
+<ul>
+  <li>
+Port numbers less than 1024 are reserved.
+Therefore, you must select larger port numbers and this port number
+must not have been assigned yet.
+A port number can be anywhere from 0 to 2^16-1, so it should be very
+easy to select unused ports.
+However, if your programs select a used port number, socket
+initialization will fail.
+Your program must handle this situation and terminate gracefully.
+
+</li>
+  <li>Seed the random number generator so that your results are
+  repeatable.</li>
+  <li><a href="https://courses.ncsu.edu/csc501/lec/001/wrap/assignments/potato.pdf">Slides</a> introducing this project.</li>
+</ul>
+
+<hr>
+<h3>Extra Credit</h3>
+None.
+
+<hr>
+<h3>Grading:</h3>
+The weighting of this assignment is given in
+<a href="https://courses.ncsu.edu/csc501/lec/001/policies.html#grading">policies</a>. 
+
+</div>
+</div>
+
+
+</body></html>

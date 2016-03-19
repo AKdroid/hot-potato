@@ -1,0 +1,4 @@
+master
+player
+src/*.o
+*.txt
