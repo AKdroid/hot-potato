@@ -15,6 +15,9 @@ struct player{
     int sock;
     struct sockaddr_in saddr;
     int len;
+    int leftport;
+    int rightport;
+    char hostname[64];
 };
 
 typedef struct player player;
@@ -62,8 +65,11 @@ int main(int argc, char* argv[]){
         if(players[registered_count].sock < 0){
             perror("Accept: ");
         }
+
+        allocate_id(players[registered_count].sock,registered_count,&(players[registered_count].hostname));
+
         registered_count++;    
-        printf("Registered Count: %d %d\n",registered_count, players[registered_count-1].sock);
+        
 
     }
     

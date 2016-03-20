@@ -44,7 +44,9 @@ int main(int argc, char* argv[]){
         exit(1);  
     }
 
-    printf("Connection successful\n");
+    register_client(master_sock,&identifier);
+
+    printf("Connected as player %d\n",identifier);
 
     close(master_sock);
 

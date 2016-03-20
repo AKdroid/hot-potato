@@ -7,10 +7,10 @@ TARGET2=master
 
 all: player master
 
-player:
+player: src/player.c src/comm.c
 	$(CC) $(CFLAGS) $(SRC)/comm.c $(SRC)/player.c -o $(TARGET1) $(INCLUDE)
 
-master:
+master: src/master.c src/comm.c
 	$(CC) $(CFLAGS) $(SRC)/comm.c $(SRC)/master.c -o $(TARGET2) $(INCLUDE)
 
 
