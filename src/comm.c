@@ -214,7 +214,7 @@ void read_from_socket(int s, char** rcvd, int* rcvdsize){
     char cmd[20];
     char* fullbuf;
     char *body;
-    int attempts = 15;
+    int attempts = 150;
     while(attempts > 0){
       rd = recv(s,buf,512,MSG_PEEK);
       if(rd > 0){
@@ -248,7 +248,7 @@ void read_from_socket(int s, char** rcvd, int* rcvdsize){
     *rcvdsize=rd;
 }
 
-void write_to_socket(int s, char* payload){
+int write_to_socket(int s, char* payload){
 
     char* frame= NULL;
     int size,payload_size,res;     
@@ -338,4 +338,194 @@ int parse_command(char* buf, char* cmd, int *size , char** body){
 }
 
 
+
+void setup_left(int s, int* listening_port){
+
+    char sendbuffer [100];
+    char * readbuffer = NULL;
+    char* body;
+    char cmd[20];
+    int sent,rcvd,size;
+
+    *listening_port = -1;    
+
+    sprintf(sendbuffer,"#SETLEFT# %d #END#",0);
+
+    sent = write_to_socket(s,sendbuffer);
+
+    if(sent<0){
+        perror("send: ");
+        return;
+    }
+        
+    read_from_socket(s,&readbuffer,&rcvd);
+
+    if(rcvd > 0){
+        parse_command(readbuffer,cmd,&size,&body);
+        if(strcmp(cmd,"ACK")==0){
+            *listening_port=atoi(body);
+        }
+        free(readbuffer);
+    }
+}
+
+void setup_right(int s, char* hostname, int portnum){
+
+    char sendbuffer [100];
+    char * readbuffer = NULL;
+    char* body;
+    char cmd[20];
+    int sent,rcvd,size;
+
+
+    printf("hostname = %s portnum = %d\n",hostname,portnum);
+
+    sprintf(sendbuffer,"#SETRIGHT# %s:%d #END#",hostname,portnum);
+
+    sent= write_to_socket(s,sendbuffer);
+
+    if(sent<0){
+        perror("send: ");
+        return;
+    }
+
+    read_from_socket(s,&readbuffer,&rcvd);
+
+    if(rcvd > 0){
+        parse_command(readbuffer,cmd,&size,&body);
+        if(strcmp(cmd,"ACK")!=0){
+            printf("Connection Failed\n");
+        }
+        free(readbuffer);
+    }
+
+}
+
+void connect_to_neighbor(int master, struct sockaddr_in** left, struct sockaddr_in** right, int* left_s, int* right_s){
+
+    char* readbuffer = NULL,cmd[20];
+    char sendbuffer[100];
+    char * body,*x;
+    int rcvd;
+    int size,sent;
+    int len;
+    char hostname[64];
+    int rport,retval;
+    int flag=-1;
+    int sockid;
+
+    struct sockaddr_in *lner;
+    struct sockaddr_in ltemp;
+
+    printf("Waiting for the neighbor details\n");
+
+    read_from_socket(master,&readbuffer,&rcvd);
+
+    if(rcvd > 0){
+        parse_command(readbuffer,cmd,&size,&body);
+        if(strcmp(cmd,"SETLEFT")==0)
+            flag=0;
+        else if(strcmp(cmd,"SETRIGHT")==0){
+            flag=1;
+            body = trim(body);
+            x = strstr(body,":");
+            printf("body = %s, diff=%d\n",body,x-body);
+            strncpy(hostname,body,x-body);
+            hostname[x-body]=0;
+            rport =  atoi(x+1);
+            printf("Hostname: %s Port = %d\n",hostname,rport);
+        }
+        free(readbuffer);
+    }
+
+    printf("Received cmd=%s\n",cmd);
+
+    if(flag == 0){
+        lner = initialize_master(0,&sockid);
+        
+        if(lner == NULL)
+            return;
+
+        listen(sockid,2);
+        len = sizeof(struct sockaddr);
+        retval = getsockname(sockid, (struct sockaddr*) &ltemp, &len);
+        if(retval < 0){
+            perror("GetSockName: ");
+            return;
+        }
+        rport = ntohs(ltemp.sin_port);
+        
+        sprintf(sendbuffer,"#ACK# %d #END#",rport);
+        
+        sent = write_to_socket(master,sendbuffer);
+        if(sent < 0){
+            perror("Sent: ");
+        } 
+
+        len = sizeof(struct sockaddr);
+        *left_s = accept(sockid,(struct sockaddr*) *left, &len);
+        
+        test_connection(*left_s, 0);
+
+    }
+    else if(flag == 1){
+         
+        *right = connect_to_master(hostname,rport,right_s);
+
+        test_connection(*right_s, 1);
+
+        if(*right != NULL)
+        sprintf(sendbuffer,"#ACK# %d #END#",0);
+   
+        sent = write_to_socket(master,sendbuffer);
+        if(sent < 0){
+            perror("Sent: ");
+        }
+
+    }
+}
+
+int test_connection(int s, int flag){
+
+    char sendbuffer[100],cmd[20];
+    char *readbuffer = NULL;
+    char *body;
+    int sent,rcvd,size;
+
+    if(flag == 0){
+        read_from_socket(s,&readbuffer,&rcvd);
+        if(rcvd > 0){
+            parse_command(readbuffer,cmd,&size,&body);
+            if(strcmp(cmd,"PING")==0){
+                strcpy(sendbuffer,"#PONG# 0 #END#");
+                sent = write_to_socket(s, sendbuffer);
+                if(sent<0){
+                    perror("Sent: ");
+                }
+            }else{
+                printf("Connection Failed\n");
+                return -1;
+            }
+            free(readbuffer);    
+        }
+        
+    }else if(flag == 1){
+        strcpy(sendbuffer,"#PING# 0 #END#");
+        sent = write_to_socket(s, sendbuffer);
+        if(sent<0){
+            perror("Sent: ");
+            return;
+        }
+        read_from_socket(s,&readbuffer,&rcvd);
+        if(rcvd > 0){
+            parse_command(readbuffer,cmd,&size,&body);
+            if(strcmp(cmd,"PONG")!=0){
+                printf("Connection Failed\n");
+                return -1;
+            }
+            free(readbuffer);
+        }
+    }
+    return 0;
+}
 

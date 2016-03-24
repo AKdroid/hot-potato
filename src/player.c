@@ -18,6 +18,16 @@ void print_usage(){
 
 }
 
+void playgame(){
+
+    int x;
+    while(1){
+        scanf("%d",&x);
+        if(x==0)
+            break;
+    }
+}
+
 int main(int argc, char* argv[]){
 
     int identifier, master_port_num;
@@ -48,6 +58,12 @@ int main(int argc, char* argv[]){
 
     printf("Connected as player %d\n",identifier);
 
+    connect_to_neighbor(master_sock, &left, &right, &left_sock, &right_sock);
+
+    connect_to_neighbor(master_sock, &left, &right, &left_sock, &right_sock);
+
+    playgame();
+    
     close(master_sock);
 
     return 0;

@@ -26,6 +26,46 @@ void print_usage(){
     printf("Usage: master <port-number> <number-of-players> <hops>\n");
 }
 
+void wait_for_players(int socket_id, player* players, int count, int MAX){
+
+        int setflag=1;
+
+        while(count < MAX){
+
+        listen(socket_id,10);
+
+        players[count].sock = accept(socket_id,(struct sockaddr*)&(players[count].saddr),&(players[count].len));
+
+        if(players[count].sock < 0){
+            perror("Accept: ");
+        }
+
+        setsockopt(players[count].sock,SOL_SOCKET,SO_KEEPALIVE,&setflag,1);
+
+        allocate_id(players[count].sock,count,&(players[count].hostname));
+
+        printf("player %d is on %s\n",count,players[count].hostname);
+
+        count++;
+    }
+}
+
+void build_ring(player* players, int MAX){
+    
+    int i;
+    int li,co;
+    
+
+    for(i=0;i<MAX;i++){
+        co = i; //right of i
+        li = (i+1)%MAX; // left of i+1
+        printf("lisock=%d cocock%d\n",players[li].sock,players[co].sock);
+        setup_left(players[li].sock,&(players[li].leftport));
+        setup_right(players[co].sock,players[li].hostname,players[li].leftport);
+    }
+
+}
+
 int main(int argc, char* argv[]){
 
     long num_of_players, port_num, hops;
@@ -33,6 +73,7 @@ int main(int argc, char* argv[]){
     int socket_id,client;
     int registered_count = 0;
     player* players;
+    char hostname[64];
 
     struct sockaddr_in* listener=NULL;
 
@@ -45,6 +86,12 @@ int main(int argc, char* argv[]){
     num_of_players = atoi(argv[2]);
     hops = atoi(argv[3]);
 
+    gethostname(hostname,64);
+
+    printf("Potato Master on %s\n",hostname);
+    printf("Players = %d\n",num_of_players);
+    printf("Hops = %d\n",hops);
+
     players = (player*) malloc(num_of_players * sizeof(player));
 
     listener = initialize_master(port_num,&socket_id);
@@ -55,24 +102,12 @@ int main(int argc, char* argv[]){
         exit(1);
     }
 
+    wait_for_players(socket_id, players, 0, num_of_players);
 
+    registered_count = num_of_players; 
 
-    while(registered_count < num_of_players){
+    build_ring(players, num_of_players);
 
-        listen(socket_id,10);
-
-        players[registered_count].sock = accept(socket_id,(struct sockaddr*)&(players[registered_count].saddr),&(players[registered_count].len));
-        if(players[registered_count].sock < 0){
-            perror("Accept: ");
-        }
-
-        allocate_id(players[registered_count].sock,registered_count,&(players[registered_count].hostname));
-
-        registered_count++;    
-        
-
-    }
-    
 
     return 0;
 }
