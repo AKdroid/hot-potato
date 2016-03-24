@@ -10,12 +10,33 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 
+char *trim(char *s){
+    
+    int l;  
+    char *x,*y;
+    l =strlen(s);
+    x = s;
+    while(*x==' '||*x=='\t'||*x=='\n'){
+        x++;
+    }
+    y=s+l-1;
+    while(*y==' '||*y=='\t'||*y=='\n'){
+        y--;
+    }
+    y++;
+    *y=0;
+    return x;
+}
+
+
 struct sockaddr_in* initialize_master(int portnum, int* s){
     
     struct sockaddr_in* master_socket=NULL;
     struct hostent *hp=NULL;
+    int setflag=1;
     char hostname[64];
     *s = socket(AF_INET, SOCK_STREAM, 0);
+    setsockopt(*s,SOL_SOCKET,SO_KEEPALIVE,&setflag,1);
     
     if(*s < 0){
         perror("Socket:");
@@ -52,8 +73,9 @@ struct sockaddr_in* connect_to_master(char* hostname, int portnum, int* s){
     struct sockaddr_in* master_socket=NULL;
     struct hostent *hp=NULL;
     int rc;
+    int setflag=1;
     *s = socket(AF_INET, SOCK_STREAM, 0);
-
+    setsockopt(*s,SOL_SOCKET,SO_KEEPALIVE,&setflag,1);
     if(*s < 0){
         perror("Socket:");
         return NULL;
@@ -91,46 +113,41 @@ struct sockaddr_in* connect_to_master(char* hostname, int portnum, int* s){
 void register_client(int master,int *id){
     
     char sendbuffer[1024];
-    char readbuffer[1024];
+    char *readbuffer = NULL;
     char hostname[64],temp[13];
     char*x,*y;
     int sent,rcvd;    
+    char cmd[100];
+    char * body= NULL;
+    int size;
 
     gethostname(hostname,sizeof(hostname));
     
-    sendbuffer[0]=0;
-
-    strcat(sendbuffer,"#REGISTER# ");
-    strcat(sendbuffer,hostname);
-    strcat(sendbuffer," #END#");
+    sprintf(sendbuffer, "#REGISTER# %s #END#",hostname);
     
-    sent = send(master,sendbuffer,strlen(sendbuffer),0);
+    sent = write_to_socket(master, sendbuffer);
 
     if(sent < 0){
         perror("Sent:");
         return;
     }
     
-    rcvd=recv(master,readbuffer,1024,0);
+    read_from_socket(master,&readbuffer,&rcvd);
     if(rcvd > 0){
-        readbuffer[rcvd]=0;
-        y = strstr(readbuffer,"#END#");
-        if(y!=NULL){
-            x = strstr(readbuffer,"#SETID#");
-            if(x != NULL){
-                strncpy(temp,readbuffer+8,y-readbuffer-8);
-                *id = atoi(temp);
-            }
+        parse_command(readbuffer,cmd,&size,&body);
+        body = trim(body);
+        if(strcmp(cmd,"SETID")==0){
+            *id = atoi(body);
         }
+        free(readbuffer);
     }
     if(rcvd < 0){
         perror("read");
     }
 
-    sendbuffer[0]=0;
-    strcat(sendbuffer,"#ACK# 0 #END#");
+    sprintf(sendbuffer,"#ACK# %d #END#",0);
     
-    sent = send(master,sendbuffer,13,0);
+    sent = write_to_socket(master,sendbuffer);
 
     if(sent < 0){
         perror("Sent:");
@@ -142,51 +159,183 @@ void register_client(int master,int *id){
 void allocate_id(int client_socket, int id, char* hostname){
     
     char sendbuffer[1024];
-    char readbuffer[1024];
+    char *readbuffer = NULL;
     char temp[13];
-    int sent,rcvd;
+    int sent,rcvd,res,size;
     char* x;
+    char *body = NULL;
+    char cmd[100];
 
+    read_from_socket(client_socket, &readbuffer,&rcvd);
 
-    rcvd=recv(client_socket,readbuffer,1024,0);
     if(rcvd > 0){
-        readbuffer[rcvd]=0;
-        x = strstr(readbuffer," #END#");
-        strncpy(hostname,readbuffer+11,x-readbuffer-11);
-        printf("Hostname of client = %s\n",hostname);
+        
+        parse_command(readbuffer,cmd,&size,&body);
+        body = trim(body);
+        if(strcmp(cmd,"REGISTER")==0){
+            strcpy(hostname,body);   
+            printf("Hostname of client = %s\n",hostname);
+        }
+        else
+            printf("Error: Invalid command\n");
+        free(readbuffer);
     }
+
     if(rcvd < 0){
         perror("read");
     }
-
-    sendbuffer[0]=0;
-
-    snprintf(temp,12,"%d",id);
-
-    strcat(sendbuffer,"#SETID# ");
-    strcat(sendbuffer,temp);
-    strcat(sendbuffer," #END#");
     
-    sent = send(client_socket,sendbuffer,strlen(sendbuffer),0);
+    sprintf(sendbuffer,"#SETID# %d #END#",id);
+
+    sent = write_to_socket(client_socket,sendbuffer);
 
     if(sent < 0){
         perror("Sent:");
         return;
     }
 
-    rcvd=recv(client_socket,readbuffer,1024,0);
+    read_from_socket(client_socket,&readbuffer,&rcvd);
     if(rcvd > 0){
-        readbuffer[rcvd]=0;
-        x=strstr(readbuffer,"#END#");
-        if(x!=NULL){
-            x=strstr(readbuffer,"#ACK#");
-            if(x != readbuffer){
-                return 0;
-            }
+        parse_command(readbuffer,cmd,&size,&body);
+        if(strcmp(cmd,"ACK")!=0){
+            printf("ACK was not received\n");
         }
-    }
-    if(rcvd < 0){
-        perror("read");
+        free(readbuffer);
     }
     return 1;
 }
+
+void read_from_socket(int s, char** rcvd, int* rcvdsize){
+
+    char buf[512];
+    char size_in_words[12];
+    int size=-1;
+    int rd,retval;
+    char cmd[20];
+    char* fullbuf;
+    char *body;
+    int attempts = 15;
+    while(attempts > 0){
+      rd = recv(s,buf,512,MSG_PEEK);
+      if(rd > 0){
+        buf[rd]=0;
+        printf("%d %s\n",rd,buf);
+        retval=parse_command(buf,&cmd,&size,&body);
+        if(retval >= 0){
+            break;
+        }
+      }
+      attempts --; 
+      sleep(5);      
+    }
+    if(size == -1){
+        *rcvd=NULL;
+        *rcvdsize == -1;
+        return;
+    }
+    sprintf(size_in_words,"%d",size);
+    size = size + strlen(size_in_words)+4;
+    fullbuf = (char*) malloc(size);
+    if(fullbuf == NULL){
+        perror("malloc:readbuffer ");
+        *rcvd = NULL;
+        *rcvdsize = -1;
+        return;
+    }    
+    rd = recv(s,fullbuf,size,0);
+    *rcvd = fullbuf;
+    fullbuf[rd]=0;
+    *rcvdsize=rd;
+}
+
+void write_to_socket(int s, char* payload){
+
+    char* frame= NULL;
+    int size,payload_size,res;     
+    char cmd[20];
+    char size_w[12];
+    char *breakpoint;
+
+    payload_size = strlen(payload);
+    sprintf(size_w,"%d",size);
+
+
+    size = payload_size + strlen(size_w) + 4;
+    frame = (char*)malloc(size);
+
+    sscanf(payload,"#%s# %s #END#",cmd);
+
+    breakpoint= strstr(payload, cmd) + strlen(cmd) + 1;
+
+    printf("cmd: %s breakpoint :%s\n", cmd,breakpoint);
+
+    sprintf(frame, "#%s #%d# %s",cmd,payload_size,breakpoint);
+ 
+    printf("frame: %s\n",frame);
+
+    res = send(s,frame,strlen(frame),0);
+    free(frame);
+
+    return res;    
+
+}
+
+int parse_command(char* buf, char* cmd, int *size , char** body){
+
+    char *x,*y;
+    char z[12];
+
+    int count = 0,hflag=0, bflag=0,i=0;
+    x = buf;
+    count=0;
+    y=z;
+    *body = NULL;
+    while(*x!=0){
+        if(*x == '#'){
+            hflag=1-hflag;
+            count = count + 1;
+            if(count  == 4 && bflag == 0){
+                bflag=1;
+                *body = x+2;
+                *size = atoi(z);
+                *y=0;
+            }
+                
+            if(count == 5){
+                *cmd = 0;
+                *x=0;
+                if(strncmp(x,"#END#",5)==0)
+                    return 1;
+            }
+            ++x;
+            ++i;
+            continue;
+        }
+        if(hflag == 1){
+            if(count == 1){
+                *cmd=*x;
+                cmd++;
+            }
+            if(count == 3){
+                *y=*x;
+                y++;
+            }
+            
+        }
+        ++x;
+        ++i;
+    }
+    *cmd = 0;
+    *y=0;
+    if(count < 4)
+        return -1;
+
+    if(count == 4)
+        return 0;
+
+    return 1;
+
+}
+
+
+
