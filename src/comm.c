@@ -9,6 +9,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include<sys/select.h>
+
+
 
 char *trim(char *s){
     
@@ -33,11 +36,11 @@ struct sockaddr_in* initialize_master(int portnum, int* s){
     
     struct sockaddr_in* master_socket=NULL;
     struct hostent *hp=NULL;
-    int setflag=1;
+    int setflag=1,retval;
     char hostname[64];
     *s = socket(AF_INET, SOCK_STREAM, 0);
     setsockopt(*s,SOL_SOCKET,SO_KEEPALIVE,&setflag,1);
-    
+    setsockopt(*s,SOL_SOCKET,SO_KEEPALIVE,&setflag,1);
     if(*s < 0){
         perror("Socket:");
         return NULL;
@@ -63,8 +66,13 @@ struct sockaddr_in* initialize_master(int portnum, int* s){
 
     memcpy(&master_socket->sin_addr,hp->h_addr_list[0],hp->h_length);
 
-    bind(*s, (struct sockaddr*) master_socket, sizeof(*master_socket));
+    retval = bind(*s, (struct sockaddr*) master_socket, sizeof(*master_socket));
     
+    if(retval < 0){
+        perror("Bind: ");
+        exit(1);
+    }
+
     return master_socket;
 }
 
@@ -110,7 +118,7 @@ struct sockaddr_in* connect_to_master(char* hostname, int portnum, int* s){
     return master_socket;
 }
 
-void register_client(int master,int *id){
+void register_client(int master,int *id, int* lid, int* rid){
     
     char sendbuffer[1024];
     char *readbuffer = NULL;
@@ -138,6 +146,10 @@ void register_client(int master,int *id){
         body = trim(body);
         if(strcmp(cmd,"SETID")==0){
             *id = atoi(body);
+            x = strstr(body,",");
+            *lid = atoi(x+1);
+            x = strstr(x+1,",");
+            *rid = atoi(x+1);
         }
         free(readbuffer);
     }
@@ -156,7 +168,7 @@ void register_client(int master,int *id){
 
 }
 
-void allocate_id(int client_socket, int id, char* hostname){
+void allocate_id(int client_socket, int id, int lid, int rid,  char* hostname){
     
     char sendbuffer[1024];
     char *readbuffer = NULL;
@@ -174,7 +186,7 @@ void allocate_id(int client_socket, int id, char* hostname){
         body = trim(body);
         if(strcmp(cmd,"REGISTER")==0){
             strcpy(hostname,body);   
-            printf("Hostname of client = %s\n",hostname);
+            //printf("Hostname of client = %s\n",hostname);
         }
         else
             printf("Error: Invalid command\n");
@@ -185,7 +197,7 @@ void allocate_id(int client_socket, int id, char* hostname){
         perror("read");
     }
     
-    sprintf(sendbuffer,"#SETID# %d #END#",id);
+    sprintf(sendbuffer,"#SETID# %d,%d,%d #END#",id,lid,rid);
 
     sent = write_to_socket(client_socket,sendbuffer);
 
@@ -219,7 +231,7 @@ void read_from_socket(int s, char** rcvd, int* rcvdsize){
       rd = recv(s,buf,512,MSG_PEEK);
       if(rd > 0){
         buf[rd]=0;
-        printf("%d %s\n",rd,buf);
+        //printf("%d %s\n",rd,buf);
         retval=parse_command(buf,&cmd,&size,&body);
         if(retval >= 0){
             break;
@@ -234,7 +246,7 @@ void read_from_socket(int s, char** rcvd, int* rcvdsize){
         return;
     }
     sprintf(size_in_words,"%d",size);
-    size = size + strlen(size_in_words)+4;
+    size = size + strlen(size_in_words)+20;
     fullbuf = (char*) malloc(size);
     if(fullbuf == NULL){
         perror("malloc:readbuffer ");
@@ -260,20 +272,21 @@ int write_to_socket(int s, char* payload){
     sprintf(size_w,"%d",size);
 
 
-    size = payload_size + strlen(size_w) + 4;
+    size = payload_size + strlen(size_w) + 20;
     frame = (char*)malloc(size);
 
     sscanf(payload,"#%s# %s #END#",cmd);
 
     breakpoint= strstr(payload, cmd) + strlen(cmd) + 1;
 
-    printf("cmd: %s breakpoint :%s\n", cmd,breakpoint);
+    //printf("cmd: %s breakpoint :%s\n", cmd,breakpoint);
 
     sprintf(frame, "#%s #%d# %s",cmd,payload_size,breakpoint);
- 
-    printf("frame: %s\n",frame);
 
-    res = send(s,frame,strlen(frame),0);
+    //printf("frame: %s\n",frame);
+
+    res = send(s,frame,strlen(frame),0);    
+
     free(frame);
 
     return res;    
@@ -378,7 +391,7 @@ void setup_right(int s, char* hostname, int portnum){
     int sent,rcvd,size;
 
 
-    printf("hostname = %s portnum = %d\n",hostname,portnum);
+    //printf("hostname = %s portnum = %d\n",hostname,portnum);
 
     sprintf(sendbuffer,"#SETRIGHT# %s:%d #END#",hostname,portnum);
 
@@ -417,7 +430,7 @@ void connect_to_neighbor(int master, struct sockaddr_in** left, struct sockaddr_
     struct sockaddr_in *lner;
     struct sockaddr_in ltemp;
 
-    printf("Waiting for the neighbor details\n");
+    //printf("Waiting for the neighbor details\n");
 
     read_from_socket(master,&readbuffer,&rcvd);
 
@@ -429,16 +442,16 @@ void connect_to_neighbor(int master, struct sockaddr_in** left, struct sockaddr_
             flag=1;
             body = trim(body);
             x = strstr(body,":");
-            printf("body = %s, diff=%d\n",body,x-body);
+            //printf("body = %s, diff=%d\n",body,x-body);
             strncpy(hostname,body,x-body);
             hostname[x-body]=0;
             rport =  atoi(x+1);
-            printf("Hostname: %s Port = %d\n",hostname,rport);
+            //printf("Hostname: %s Port = %d\n",hostname,rport);
         }
         free(readbuffer);
     }
 
-    printf("Received cmd=%s\n",cmd);
+    //printf("Received cmd=%s\n",cmd);
 
     if(flag == 0){
         lner = initialize_master(0,&sockid);
@@ -464,7 +477,10 @@ void connect_to_neighbor(int master, struct sockaddr_in** left, struct sockaddr_
 
         len = sizeof(struct sockaddr);
         *left_s = accept(sockid,(struct sockaddr*) *left, &len);
-        
+       
+        //close(sockid);
+        //free(lner);
+ 
         test_connection(*left_s, 0);
 
     }
@@ -527,5 +543,134 @@ int test_connection(int s, int flag){
         }
     }
     return 0;
+}
+
+void initiate_game(int player_sock, int hops){
+
+    char sendbuffer[100];
+    int sent;    
+
+    sprintf(sendbuffer,"#START# %d #END#",hops);
+    
+    sent= write_to_socket(player_sock,sendbuffer);
+    
+    if(sent < 0){
+        perror("Send: ");
+    }
+
+}
+
+int select_readable_socket(int * sockets, int length, int timeout_sec){
+
+    fd_set read_set;
+    int i;
+    int retval;
+    struct timeval timeout;
+    timeout.tv_sec = timeout_sec;
+    timeout.tv_usec = 0;
+
+    FD_ZERO(&read_set);
+    for(i=0;i<length;i++){
+        FD_SET(sockets[i],&read_set);
+    }
+    
+    retval = select(FD_SETSIZE,&read_set,NULL,NULL,&timeout);    
+
+    if(retval>0){
+        for(i=0;i<length;i++)
+            if(FD_ISSET(sockets[i],&read_set)){
+                return sockets[i];
+            }
+
+    }
+    return -1;
+}
+
+
+void get_potato(int sock, int* hops, char ** content, char **mainbody){
+
+    char * readbuffer=NULL,*body,*x,cmd[20];
+    int size, rcvd=0;
+    
+    read_from_socket(sock, &readbuffer, &rcvd);
+    if(rcvd > 0){
+        parse_command(readbuffer,cmd,&size,&body);
+        body=trim(body);
+        if(strcmp(cmd,"CLOSE")==0){
+            *content = readbuffer;
+            *hops=-1;
+            return;
+        }
+        if(strcmp(cmd,"PASS")==0){
+            *hops = atoi(body);
+            *content = readbuffer;
+            *mainbody = strstr(body,":")+1;
+        }
+        else if(strcmp(cmd,"START")==0){
+            *hops = atoi(body);
+            *content = readbuffer;
+            *mainbody = NULL;
+        }
+    }
+}
+
+void pass_potato(int sock, int id, int hops, int comma, char *body){
+
+    char *sendbuffer = NULL;
+    char size_s[12],hops_s[12];
+    int size,sent;
+    if(comma == 1){
+        sprintf(size_s,",%d",id);
+    } else {
+        sprintf(size_s,"%d",id);
+    }
+    sprintf(hops_s,"%d:",hops-1);
+    size = strlen(body) +  strlen(size_s) + strlen(hops_s) + 7 + 7;
+    sendbuffer = (char*) malloc(size);
+    
+    sprintf(sendbuffer,"#PASS# %s%s%s #END#",hops_s,body,size_s);
+    
+    sent = write_to_socket(sock,sendbuffer);
+
+    if(sent < 0){
+        perror("sent: ");
+    }
+
+    free(sendbuffer);
+
+}
+
+void close_players(int sock){
+
+    char sendbuffer[100];
+    int sent;    
+
+    strcpy(sendbuffer,"#CLOSE# 0 #END#");
+
+    sent = write_to_socket(sock,sendbuffer);
+    if(sent < 0)
+        perror("Sent: ");
+
+}
+
+void print_final_trace(int sock){
+
+    char *readbuffer=NULL,cmd[20],*body,*x;
+    int size,rcvd,hops;
+
+    read_from_socket(sock,&readbuffer,&rcvd);
+    if(rcvd > 0){
+        parse_command(readbuffer,cmd,&size,&body);
+        if(strcmp(cmd,"PASS")==0){
+            body = trim(body);
+            hops = atoi(body);
+            if(hops == 0){
+                x=strstr(body,":");
+                printf("Trace of potato\n");
+                printf("%s\n",x+1);
+            }
+        }
+        free(readbuffer);
+    }    
 }
 

@@ -42,7 +42,7 @@ void wait_for_players(int socket_id, player* players, int count, int MAX){
 
         setsockopt(players[count].sock,SOL_SOCKET,SO_KEEPALIVE,&setflag,1);
 
-        allocate_id(players[count].sock,count,&(players[count].hostname));
+        allocate_id(players[count].sock,count,(count-1+MAX)%MAX,(count+1)%MAX,&(players[count].hostname));
 
         printf("player %d is on %s\n",count,players[count].hostname);
 
@@ -59,7 +59,6 @@ void build_ring(player* players, int MAX){
     for(i=0;i<MAX;i++){
         co = i; //right of i
         li = (i+1)%MAX; // left of i+1
-        printf("lisock=%d cocock%d\n",players[li].sock,players[co].sock);
         setup_left(players[li].sock,&(players[li].leftport));
         setup_right(players[co].sock,players[li].hostname,players[li].leftport);
     }
@@ -68,12 +67,14 @@ void build_ring(player* players, int MAX){
 
 int main(int argc, char* argv[]){
 
-    long num_of_players, port_num, hops;
+    long num_of_players, port_num, hops, i;
     int state;
     int socket_id,client;
     int registered_count = 0;
     player* players;
     char hostname[64];
+    
+    int* player_sockets= NULL;
 
     struct sockaddr_in* listener=NULL;
 
@@ -108,6 +109,44 @@ int main(int argc, char* argv[]){
 
     build_ring(players, num_of_players);
 
+    srand((unsigned) 1);
+
+    client = rand()%num_of_players;
+    
+    printf("All players present, sending potato to player %d\n",client);
+
+    player_sockets = (int*) malloc(num_of_players*sizeof(int));
+
+    for(i=0;i<num_of_players;i++){
+        player_sockets[i] = players[i].sock;
+    }
+
+    initiate_game(players[client].sock,hops);
+
+    client = select_readable_socket(player_sockets, num_of_players, 3600);
+
+    if(client <= 0){
+        printf("Did not receive any trace back\n");
+    }else {
+        print_final_trace(client);
+    }
+    
+
+    for(i=0;i<num_of_players;i++){
+        close_players(players[i].sock);
+    }
+    
+    for(i=0;i<num_of_players;i++){
+        shutdown(players[i].sock,SHUT_RDWR);
+        close(players[i].sock);
+    }
+
+    shutdown(socket_id,SHUT_RDWR);
+    close(socket_id);
+    free(player_sockets);
+    free(players);
+
+    sleep(10);
 
     return 0;
 }
