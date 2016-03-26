@@ -222,9 +222,9 @@ void read_from_socket(int s, char** rcvd, int* rcvdsize){
     char buf[512];
     char size_in_words[12];
     int size=-1;
-    int rd,retval;
+    int rd,retval,cnt=0;
     char cmd[20];
-    char* fullbuf;
+    char* fullbuf,*temp;
     char *body;
     int attempts = 150;
     while(attempts > 0){
@@ -254,10 +254,20 @@ void read_from_socket(int s, char** rcvd, int* rcvdsize){
         *rcvdsize = -1;
         return;
     }    
-    rd = recv(s,fullbuf,size,0);
+    cnt = 0;
+    temp = fullbuf;
+    while(1){
+        rd = recv(s,temp,size,0);
+        temp[rd] = 0;
+        size = size - rd;
+        cnt = cnt +rd;
+        if (strcmp(temp+rd-5,"#END#")==0)
+            break;
+        temp=temp+rd;
+    }
+    //printf("fullbuf=%s\n",fullbuf);
     *rcvd = fullbuf;
-    fullbuf[rd]=0;
-    *rcvdsize=rd;
+    *rcvdsize=cnt ;
 }
 
 int write_to_socket(int s, char* payload){

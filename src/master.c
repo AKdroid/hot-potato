@@ -29,6 +29,7 @@ void print_usage(){
 void wait_for_players(int socket_id, player* players, int count, int MAX){
 
         int setflag=1;
+        struct linger linger_s;
 
         while(count < MAX){
 
@@ -41,6 +42,12 @@ void wait_for_players(int socket_id, player* players, int count, int MAX){
         }
 
         setsockopt(players[count].sock,SOL_SOCKET,SO_KEEPALIVE,&setflag,1);
+
+        linger_s.l_onoff=1;
+        linger_s.l_linger=0;
+
+        setsockopt(players[count].sock, SOL_SOCKET, SO_LINGER, &linger_s, sizeof linger_s);
+
 
         allocate_id(players[count].sock,count,(count-1+MAX)%MAX,(count+1)%MAX,&(players[count].hostname));
 
@@ -73,7 +80,7 @@ int main(int argc, char* argv[]){
     int registered_count = 0;
     player* players;
     char hostname[64];
-    
+    struct linger linger_s; 
     int* player_sockets= NULL;
 
     struct sockaddr_in* listener=NULL;
@@ -97,10 +104,18 @@ int main(int argc, char* argv[]){
 
     listener = initialize_master(port_num,&socket_id);
     
+    linger_s.l_onoff=1;
+    linger_s.l_linger=0;
+
     if(listener == NULL || num_of_players <= 0){
         printf("Master could not be started\n");
         free(players);
         exit(1);
+    }
+
+    client = setsockopt(socket_id, SOL_SOCKET, SO_LINGER, &linger_s, sizeof linger_s);   
+    if(client < 0){
+        perror("lingerset");
     }
 
     wait_for_players(socket_id, players, 0, num_of_players);
@@ -109,7 +124,7 @@ int main(int argc, char* argv[]){
 
     build_ring(players, num_of_players);
 
-    srand((unsigned) 1);
+    srand((unsigned) num_of_players + hops);
 
     client = rand()%num_of_players;
     
@@ -146,7 +161,6 @@ int main(int argc, char* argv[]){
     free(player_sockets);
     free(players);
 
-    sleep(10);
 
     return 0;
 }

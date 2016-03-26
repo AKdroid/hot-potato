@@ -65,9 +65,7 @@ int main(int argc, char* argv[]){
 
     connect_to_neighbor(master_sock, &left, &right, &left_sock, &right_sock);
 
-    srand((unsigned) 1);
-
-    //playgame();
+    srand((unsigned) identifier);
 
     sockets[0]=master_sock;
     sockets[1]=left_sock;
