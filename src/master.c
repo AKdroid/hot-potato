@@ -128,14 +128,15 @@ int main(int argc, char* argv[]){
 
     client = rand()%num_of_players;
     
-    printf("All players present, sending potato to player %d\n",client);
-
     player_sockets = (int*) malloc(num_of_players*sizeof(int));
 
     for(i=0;i<num_of_players;i++){
         player_sockets[i] = players[i].sock;
     }
 
+    if(hops > 0){
+
+    printf("All players present, sending potato to player %d\n",client);
     initiate_game(players[client].sock,hops);
 
     client = select_readable_socket(player_sockets, num_of_players, 3600);
@@ -145,7 +146,7 @@ int main(int argc, char* argv[]){
     }else {
         print_final_trace(client);
     }
-    
+    }
 
     for(i=0;i<num_of_players;i++){
         close_players(players[i].sock);
