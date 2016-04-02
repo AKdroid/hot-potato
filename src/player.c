@@ -32,8 +32,6 @@ int main(int argc, char* argv[]){
 
     int identifier, master_port_num, l_id, r_id;
     char* hostname;
-    char readbuffer[1024];
-    char writebuffer[1024];
     struct sockaddr_in* master=NULL, *left=NULL, *right=NULL;
     int master_sock, left_sock, right_sock, hops, reader_sock;
     char *body, *readbuf, *bodynull = "";

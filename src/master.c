@@ -14,7 +14,7 @@
 struct player{
     int sock;
     struct sockaddr_in saddr;
-    int len;
+    unsigned int len;
     int leftport;
     int rightport;
     char hostname[64];
@@ -49,7 +49,7 @@ void wait_for_players(int socket_id, player* players, int count, int MAX){
         setsockopt(players[count].sock, SOL_SOCKET, SO_LINGER, &linger_s, sizeof linger_s);
 
 
-        allocate_id(players[count].sock,count,(count-1+MAX)%MAX,(count+1)%MAX,&(players[count].hostname));
+        allocate_id(players[count].sock,count,(count-1+MAX)%MAX,(count+1)%MAX,(players[count].hostname));
 
         printf("player %d is on %s\n",count,players[count].hostname);
 
@@ -75,9 +75,7 @@ void build_ring(player* players, int MAX){
 int main(int argc, char* argv[]){
 
     long num_of_players, port_num, hops, i;
-    int state;
     int socket_id,client;
-    int registered_count = 0;
     player* players;
     char hostname[64];
     struct linger linger_s; 
@@ -97,8 +95,8 @@ int main(int argc, char* argv[]){
     gethostname(hostname,64);
 
     printf("Potato Master on %s\n",hostname);
-    printf("Players = %d\n",num_of_players);
-    printf("Hops = %d\n",hops);
+    printf("Players = %ld\n",num_of_players);
+    printf("Hops = %ld\n",hops);
 
     players = (player*) malloc(num_of_players * sizeof(player));
 
@@ -119,8 +117,6 @@ int main(int argc, char* argv[]){
     }
 
     wait_for_players(socket_id, players, 0, num_of_players);
-
-    registered_count = num_of_players; 
 
     build_ring(players, num_of_players);
 

@@ -10,7 +10,7 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include<sys/select.h>
-
+#include"comm.h"
 
 
 char *trim(char *s){
@@ -118,12 +118,67 @@ struct sockaddr_in* connect_to_master(char* hostname, int portnum, int* s){
     return master_socket;
 }
 
+void read_from_socket(int s, char** rcvd, int* rcvdsize){
+
+    char buf[512];
+    char size_in_words[12];
+    int size=-1;
+    int rd,retval,cnt=0;
+    char cmd[20];
+    char* fullbuf,*temp;
+    char *body;
+    int attempts = 150;
+    while(attempts > 0){
+      rd = recv(s,buf,512,MSG_PEEK);
+      if(rd > 0){
+        buf[rd]=0;
+        //printf("%d %s\n",rd,buf);
+        retval=parse_command(buf,cmd,&size,&body);
+        if(retval >= 0){
+            break;
+        }
+      }
+      attempts --;
+      sleep(5);
+    }
+    if(size == -1){
+        *rcvd=NULL;
+        *rcvdsize = -1;
+        return;
+    }
+    sprintf(size_in_words,"%d",size);
+    size = size + strlen(size_in_words)+20;
+    fullbuf = (char*) malloc(size);
+    if(fullbuf == NULL){
+        perror("malloc:readbuffer ");
+        *rcvd = NULL;
+        *rcvdsize = -1;
+        return;
+    }
+    cnt = 0;
+    temp = fullbuf;
+    while(1){
+        rd = recv(s,temp,size,0);
+        temp[rd] = 0;
+        size = size - rd;
+        cnt = cnt +rd;
+        if (strcmp(temp+rd-5,"#END#")==0)
+            break;
+        temp=temp+rd;
+    }
+    //printf("fullbuf=%s\n",fullbuf);
+    *rcvd = fullbuf;
+    *rcvdsize=cnt ;
+}
+
+
+
 void register_client(int master,int *id, int* lid, int* rid){
     
     char sendbuffer[1024];
     char *readbuffer = NULL;
-    char hostname[64],temp[13];
-    char*x,*y;
+    char hostname[64];
+    char*x;
     int sent,rcvd;    
     char cmd[100];
     char * body= NULL;
@@ -172,9 +227,7 @@ void allocate_id(int client_socket, int id, int lid, int rid,  char* hostname){
     
     char sendbuffer[1024];
     char *readbuffer = NULL;
-    char temp[13];
-    int sent,rcvd,res,size;
-    char* x;
+    int sent,rcvd,size;
     char *body = NULL;
     char cmd[100];
 
@@ -214,60 +267,6 @@ void allocate_id(int client_socket, int id, int lid, int rid,  char* hostname){
         }
         free(readbuffer);
     }
-    return 1;
-}
-
-void read_from_socket(int s, char** rcvd, int* rcvdsize){
-
-    char buf[512];
-    char size_in_words[12];
-    int size=-1;
-    int rd,retval,cnt=0;
-    char cmd[20];
-    char* fullbuf,*temp;
-    char *body;
-    int attempts = 150;
-    while(attempts > 0){
-      rd = recv(s,buf,512,MSG_PEEK);
-      if(rd > 0){
-        buf[rd]=0;
-        //printf("%d %s\n",rd,buf);
-        retval=parse_command(buf,&cmd,&size,&body);
-        if(retval >= 0){
-            break;
-        }
-      }
-      attempts --; 
-      sleep(5);      
-    }
-    if(size == -1){
-        *rcvd=NULL;
-        *rcvdsize == -1;
-        return;
-    }
-    sprintf(size_in_words,"%d",size);
-    size = size + strlen(size_in_words)+20;
-    fullbuf = (char*) malloc(size);
-    if(fullbuf == NULL){
-        perror("malloc:readbuffer ");
-        *rcvd = NULL;
-        *rcvdsize = -1;
-        return;
-    }    
-    cnt = 0;
-    temp = fullbuf;
-    while(1){
-        rd = recv(s,temp,size,0);
-        temp[rd] = 0;
-        size = size - rd;
-        cnt = cnt +rd;
-        if (strcmp(temp+rd-5,"#END#")==0)
-            break;
-        temp=temp+rd;
-    }
-    //printf("fullbuf=%s\n",fullbuf);
-    *rcvd = fullbuf;
-    *rcvdsize=cnt ;
 }
 
 int write_to_socket(int s, char* payload){
@@ -279,13 +278,13 @@ int write_to_socket(int s, char* payload){
     char *breakpoint;
 
     payload_size = strlen(payload);
-    sprintf(size_w,"%d",size);
+    sprintf(size_w,"%d",payload_size);
 
 
     size = payload_size + strlen(size_w) + 20;
     frame = (char*)malloc(size);
 
-    sscanf(payload,"#%s# %s #END#",cmd);
+    sscanf(payload,"#%s# %*s #END#",(char*)cmd);
 
     breakpoint= strstr(payload, cmd) + strlen(cmd) + 1;
 
@@ -431,7 +430,7 @@ void connect_to_neighbor(int master, struct sockaddr_in** left, struct sockaddr_
     char * body,*x;
     int rcvd;
     int size,sent;
-    int len;
+    unsigned int len;
     char hostname[64];
     int rport,retval;
     int flag=-1;
@@ -540,7 +539,7 @@ int test_connection(int s, int flag){
         sent = write_to_socket(s, sendbuffer);
         if(sent<0){
             perror("Sent: ");
-            return;
+            return -1;
         }
         read_from_socket(s,&readbuffer,&rcvd);
         if(rcvd > 0){
@@ -599,7 +598,7 @@ int select_readable_socket(int * sockets, int length, int timeout_sec){
 
 void get_potato(int sock, int* hops, char ** content, char **mainbody){
 
-    char * readbuffer=NULL,*body,*x,cmd[20];
+    char * readbuffer=NULL,*body,cmd[20];
     int size, rcvd=0;
     
     read_from_socket(sock, &readbuffer, &rcvd);

@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-w -Wall -g
+CFLAGS= -Wall -Wimplicit
 INCLUDE=-I headers
 SRC=src
 TARGET1=player
